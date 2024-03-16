@@ -14,17 +14,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import exceptions
 import os
+from typing import Self
 import uuid
+
 from imapfs.debug_print import debug_print
+from imapfs.imapconnection import IMAPConnection
 
 
 class Message:
   """Represents an IMAP message as a file-like object
   """
 
-  def __init__(self, conn, name, data):
+  def __init__(self, conn: IMAPConnection, name: str, data: bytes):
     self.conn = conn
     self.name = name
     self.data = bytearray(data)
@@ -68,11 +70,11 @@ class Message:
       if self.pos > size:
         self.pos = size
     else:
-      self.data += "." * (size - len(self.data))
+      self.data += b"." * (size - len(self.data))
 
     self.dirty = True
 
-  def write(self, buf):
+  def write(self, buf: bytes):
     """Write to the message
     """
     if self.pos + len(buf) > len(self.data):
@@ -94,10 +96,7 @@ class Message:
 
       # Store message
       # Compress, if requested
-      if self.compress:
-        data_str = self.conn.enc.compress(str(self.data))
-      else:
-        data_str = str(self.data)
+      data_str = bytes(self.data)
 
       self.conn.put_message(self.name, data_str)
 
@@ -112,36 +111,32 @@ class Message:
     """
     self.flush()
 
-  @staticmethod
-  def create(conn):
-    msg = Message(conn, str(uuid.uuid4()), "")
+  @classmethod
+  def create(cls, conn: IMAPConnection) -> Self:
+    msg = cls(conn, str(uuid.uuid4()), b"")
     msg.dirty = True
     return msg
 
-  @staticmethod
-  def open(conn, name, compressed=False):
+  @classmethod
+  def open(cls, conn: IMAPConnection, name: str) -> Self:
     """Open a message with name `name'
     Raises IOError if not found
     """
     # Find message with subject 'name'
     uid = conn.get_uid_by_subject(name)
     if not uid:
-      raise exceptions.IOError()
+      raise IOError()
 
     data = conn.get_message(uid)
     if data is None:
-      raise exceptions.IOError()
+      raise IOError()
 
-    if compressed:
-      msg = Message(conn, name, conn.enc.decompress(data))
-      msg.compress = True
-    else:
-      msg = Message(conn, name, data)
+    msg = cls(conn, name, data)
 
     return msg
 
   @staticmethod
-  def unlink(conn, name):
+  def unlink(conn, name: str) -> None:
     """Delete a message with name `name'
     """
 

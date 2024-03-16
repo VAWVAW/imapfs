@@ -15,8 +15,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import time
+from typing import Self
 
 from imapfs import message
+from imapfs.imapconnection import IMAPConnection
 
 
 class Directory:
@@ -24,20 +26,20 @@ class Directory:
   Contains a list of file names
   """
 
-  def __init__(self, msg, ctime, mtime, children):
+  def __init__(self, msg: message.Message, ctime: float, mtime: float, children: dict[str, str]):
     self.message = msg
     self.ctime = ctime
     self.mtime = mtime
     self.children = children
     self.dirty = False
 
-  def add_child(self, key, name):
+  def add_child(self, key: str, name: str) -> None:
     """Add a child to this directory
     """
     self.children[key] = name
     self.dirty = True
 
-  def remove_child(self, key):
+  def remove_child(self, key: str) -> None:
     """Remove a child by key from this dir
     """
     if key not in self.children:
@@ -45,7 +47,7 @@ class Directory:
     self.children.pop(key)
     self.dirty = True
 
-  def get_child_by_name(self, name):
+  def get_child_by_name(self, name: str) -> str | None:
     """Get a child's key by its name
     """
     for child_key, child_name in self.children.items():
@@ -53,39 +55,39 @@ class Directory:
         return child_key
     return None
 
-  def flush(self):
+  def flush(self) -> None:
     """Writes the changes to the server
     """
     if self.dirty:
       self.mtime = time.time()
       self.message.truncate(0)  # clear
-      self.message.write("d\r\n%d\t%d\r\n" % (self.ctime, self.mtime))
+      self.message.write(b"d\r\n%d\t%d\r\n" % (self.ctime, self.mtime))
       for child_key, child_name in self.children.items():
-        self.message.write("%s\t%s\r\n" % (child_key, child_name))
+        self.message.write(b"%s\t%s\r\n" % (child_key.encode(), child_name.encode()))
       self.message.flush()
       self.dirty = False
 
-  def close(self):
+  def close(self) -> None:
     """Close
     Calls flush
     """
     self.flush()
     self.message.close()
 
-  @staticmethod
-  def create(conn):
+  @classmethod
+  def create(cls, conn: IMAPConnection) -> Self:
     """Create a directory
     """
     msg = message.Message.create(conn)
-    d = Directory(msg, time.time(), time.time(), {})
+    d = cls(msg, time.time(), time.time(), {})
     d.dirty = True
     return d
 
-  @staticmethod
-  def from_message(msg):
+  @classmethod
+  def from_message(cls, msg: message.Message) -> Self:
     """Create a directory object from a message
     """
-    data = str(msg.read())
+    data = bytes(msg.read()).decode()
 
     lines = data.split("\r\n")
     info = lines[1].split("\t")
@@ -97,5 +99,5 @@ class Directory:
       line_info = line.split("\t")
       children[line_info[0]] = line_info[1]
 
-    d = Directory(msg, int(info[0]), int(info[1]), children)
+    d = cls(msg, int(info[0]), int(info[1]), children)
     return d

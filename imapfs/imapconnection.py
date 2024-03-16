@@ -25,24 +25,24 @@ class IMAPConnection:
   """Class that manages a connection to an IMAP server
   """
 
-  def __init__(self, host, port):
+  def __init__(self, host: str, port: int):
     """Connects to host:port
     """
     self.conn = imaplib.IMAP4_SSL(host, port)
     self.mailbox = "INBOX"
-    self.uid_cache = {}
+    self.uid_cache: dict[str, str] = {}
 
-  def login(self, user, passwd):
+  def login(self, user: str, passwd: str):
     """Log in using user and passwd
     """
     self.conn.login(user, passwd)
 
-  def logout(self):
+  def logout(self) -> None:
     """Log out of the server
     """
     self.conn.logout()
 
-  def select(self, mailbox):
+  def select(self, mailbox: str) -> None:
     """Select a mailbox to use
     """
     results = self.conn.select(mailbox)
@@ -50,7 +50,7 @@ class IMAPConnection:
       raise Exception()
     self.mailbox = mailbox
 
-  def get_message(self, uid):
+  def get_message(self, uid: str) -> bytes | None:
     """Get a message's text by its UID
     Returns None if not found
     """
@@ -68,7 +68,7 @@ class IMAPConnection:
     data = params[1][0][1]
     return b64decode(data)
 
-  def put_message(self, subject, data):
+  def put_message(self, subject: str, data: bytes) -> None:
     """Store a message
     subject is stored as the message's subject
     """
@@ -77,44 +77,44 @@ class IMAPConnection:
     if subject in self.uid_cache:
       self.uid_cache.pop(subject)
 
-    msg = email.mime.text.MIMEText(b64encode(data))
+    msg = email.mime.text.MIMEText(b64encode(data).decode())
     msg['Subject'] = subject
 
-    results = self.conn.append(self.mailbox, "(\\Seen \\Draft)", time.time(), msg.as_string())
+    results = self.conn.append(self.mailbox, "(\\Seen \\Draft)", time.time(), msg.as_string().encode())
 
     # Attempt to cache new UID
     # Requires the server to provide APPENDUID statement
-    info = results[1][0]
+    info = results[1][0].decode()
     match = re.search("APPENDUID [0-9]+ ([0-9]+)", info, re.I)
     if match:
       new_uid = match.group(1)
       self.uid_cache[subject] = new_uid
 
-  def delete_message(self, uid):
+  def delete_message(self, uid: str) -> None:
     """Delete a message by UID
     """
     self.conn.uid("STORE", uid, "+FLAGS", "\\Deleted")
 
     # Invalidate cache
-    for subject, s_uid in self.uid_cache.items():
+    for subject, s_uid in list(self.uid_cache.items()):
         if s_uid == uid:
           self.uid_cache.pop(subject)
 
     # self.conn.expunge()
 
-  def search_by_subject(self, subject):
+  def search_by_subject(self, subject: str) -> list[str] | None:
     """Returns a list of UIDs of messages with given subject
     """
     results = self.conn.uid("SEARCH", "SUBJECT", "\"%s\"" % subject)
     if not results[1]:
       return None
-    uids = results[1][0].split(" ")
+    uids = [part.decode() for part in results[1][0].split(b" ")]
     if len(uids) == 1 and uids[0] == '':
       return None
 
     return uids
 
-  def get_uid_by_subject(self, subject):
+  def get_uid_by_subject(self, subject: str) -> str | None:
     """Get the UID of a single message with subject subject
     """
     # Check cache

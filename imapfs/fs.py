@@ -15,7 +15,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import stat
+import traceback
 import uuid
+from collections.abc import Generator
 
 import fuse
 
@@ -23,9 +25,13 @@ from imapfs import directory, file, imapconnection, message
 from imapfs.debug_print import debug_print
 
 
-ROOT = str(uuid.UUID(bytes='\0' * 16))
+ROOT = str(uuid.UUID(int=0))
 
 fuse.fuse_python_api = (0, 2)
+
+
+FileOrDir = file.File | directory.Directory
+Errno = int | None
 
 
 class IMAPFS(fuse.Fuse):
@@ -34,7 +40,7 @@ class IMAPFS(fuse.Fuse):
 
   def __init__(self, *args, **kwargs):
     fuse.Fuse.__init__(self, *args, **kwargs)
-    self.open_nodes = {}
+    self.open_nodes: dict[str, FileOrDir] = {}
 
     self.key = ""
     self.rounds = 10000
@@ -63,13 +69,13 @@ class IMAPFS(fuse.Fuse):
     fuse.Fuse.main(self, args)
 
     # Close all open nodes
-    for node in self.open_nodes.values():
+    for node in list(self.open_nodes.values()):
       self.close_node(node)
 
     # Stop
     self.imap.logout()
 
-  def open_node(self, name):
+  def open_node(self, name: str) -> FileOrDir | None:
     """Opens a node (file or directory)
     """
 
@@ -82,13 +88,14 @@ class IMAPFS(fuse.Fuse):
       if not msg:
         return None
     except Exception:
+      traceback.print_exc()
       return None
 
     # Determine file or dir
     type_code = chr(msg.data[0])
 
     if type_code == 'f':
-      obj = file.File.from_message(msg)
+      obj: FileOrDir = file.File.from_message(msg)
     elif type_code == 'd':
       obj = directory.Directory.from_message(msg)
     else:
@@ -97,14 +104,14 @@ class IMAPFS(fuse.Fuse):
     self.open_nodes[name] = obj
     return obj
 
-  def close_node(self, node):
+  def close_node(self, node: FileOrDir) -> None:
     """Close an open node
     """
     node.close()
     if node.message.name in self.open_nodes:
       self.open_nodes.pop(node.message.name)
 
-  def check_filesystem(self):
+  def check_filesystem(self) -> bool | None:
     """Check if there is a filesystem present
     Returns True, False or None
     Returns True when a filesystem is successfully located
@@ -114,29 +121,30 @@ class IMAPFS(fuse.Fuse):
     try:
       root = self.open_node(ROOT)
     except Exception:
+      traceback.print_exc()
       return False
 
     if root is None:
       return None
 
-    if root.__class__ != directory.Directory:
+    if not isinstance(root, directory.Directory):
       return False
 
     # check if decrypted properly
-    data = str(root.message.data[0:3])
-    if data != "d\r\n":
+    data = bytes(root.message.data[0:3])
+    if data != b"d\r\n":
       return False
 
     return True
 
-  def init_filesystem(self):
+  def init_filesystem(self) -> None:
     """Create a filesystem
     """
     root = directory.Directory.create(self.imap)
     root.message.name = ROOT
     root.close()
 
-  def get_node_by_path(self, path):
+  def get_node_by_path(self, path: str) -> FileOrDir | None:
     """Open the node specified by path
     Walks through the directory tree to find the node
     """
@@ -152,7 +160,7 @@ class IMAPFS(fuse.Fuse):
         continue
 
       # Trying to get the child of a file?
-      if current_node.__class__ != directory.Directory:
+      if not isinstance(current_node, directory.Directory):
         break
 
       # find children
@@ -167,13 +175,13 @@ class IMAPFS(fuse.Fuse):
       current_node = child_node
     return current_node
 
-  def get_path_parent(self, path):
+  def get_path_parent(self, path: str) -> str:
     """Gets the parent part of a path
     """
     parts = path.rpartition("/")
     return parts[0]
 
-  def get_path_filename(self, path):
+  def get_path_filename(self, path: str) -> str:
     """Gets the filename part of a path
     """
     parts = path.rpartition("/")
@@ -183,14 +191,14 @@ class IMAPFS(fuse.Fuse):
   # Filesystem functions
   #
 
-  def statfs(self):
+  def statfs(self) -> fuse.StatVfs:
     st = fuse.StatVfs()
     st.f_bsize = file.FS_BLOCK_SIZE
     st.f_frsize = file.FS_BLOCK_SIZE
 
     return st
 
-  def getattr(self, path):
+  def getattr(self, path: str) -> fuse.Stat | int:
     node = self.get_node_by_path(path)
 
     if not node:
@@ -198,20 +206,20 @@ class IMAPFS(fuse.Fuse):
 
     st = fuse.Stat()
 
-    if node.__class__ == directory.Directory:
-      st.st_mode = stat.S_IFDIR | 0777
+    if isinstance(node, directory.Directory):
+      st.st_mode = stat.S_IFDIR | 0o777
       st.st_nlink = 2
       st.st_size = 4096
     else:
-      st.st_mode = stat.S_IFREG | 0666
+      st.st_mode = stat.S_IFREG | 0o666
       st.st_nlink = 1
       st.st_size = node.size
 
     return st
 
-  def readdir(self, path, offset):
+  def readdir(self, path: str, offset) -> Generator[fuse.Direntry, None, None]:
     node = self.get_node_by_path(path)
-    if node.__class__ != directory.Directory:
+    if not isinstance(node, directory.Directory):
       return
 
     debug_print("Listing %s/" % path)
@@ -222,10 +230,12 @@ class IMAPFS(fuse.Fuse):
     for child_name in node.children.values():
       yield fuse.Direntry(child_name)
 
-  def mkdir(self, path, mode):
+  def mkdir(self, path: str, mode) -> Errno:
     parent = self.get_node_by_path(self.get_path_parent(path))
     if not parent:
       return -fuse.ENOENT
+
+    assert isinstance(parent, directory.Directory)
 
     if parent.get_child_by_name(self.get_path_filename(path)):
       return -fuse.EEXIST
@@ -236,12 +246,12 @@ class IMAPFS(fuse.Fuse):
     self.open_nodes[child.message.name] = child
     parent.add_child(child.message.name, self.get_path_filename(path))
 
-  def rmdir(self, path):
+  def rmdir(self, path: str) -> Errno:
     child = self.get_node_by_path(path)
     if not child:
       return -fuse.ENOENT
 
-    if child.__class__ != directory.Directory:
+    if not isinstance(child, directory.Directory):
       return -fuse.ENOTDIR
 
     if len(child.children) > 0:
@@ -253,14 +263,18 @@ class IMAPFS(fuse.Fuse):
 
     debug_print("Removing directory %s/" % path)
 
+    assert isinstance(parent, directory.Directory)
+
     parent.remove_child(child.message.name)
     self.close_node(child)
     message.Message.unlink(self.imap, child.message.name)
 
-  def mknod(self, path, mode, dev):
+  def mknod(self, path: str, mode, dev) -> Errno:
     parent = self.get_node_by_path(self.get_path_parent(path))
     if not parent:
       return -fuse.ENOENT
+
+    assert isinstance(parent, directory.Directory)
 
     if parent.get_child_by_name(self.get_path_filename(path)):
       return -fuse.EEXIST
@@ -271,7 +285,7 @@ class IMAPFS(fuse.Fuse):
     self.open_nodes[node.message.name] = node
     parent.add_child(node.message.name, self.get_path_filename(path))
 
-  def rename(self, oldpath, newpath):
+  def rename(self, oldpath: str, newpath: str) -> Errno:
     # handle dir name
     if not self.get_path_filename(newpath):
       newpath += self.get_path_filename(oldpath)
@@ -284,12 +298,15 @@ class IMAPFS(fuse.Fuse):
       if not parent:
         return -fuse.ENOENT
 
+      assert isinstance(parent, directory.Directory)
+
       # For simplicity we do not allow overwriting
       new_child_key = parent.get_child_by_name(self.get_path_filename(newpath))
       if new_child_key:
         return -fuse.EEXIST
 
       child_key = parent.get_child_by_name(self.get_path_filename(oldpath))
+      assert child_key
       parent.children[child_key] = self.get_path_filename(newpath)
       parent.dirty = True
     else:
@@ -308,11 +325,14 @@ class IMAPFS(fuse.Fuse):
 
       new_parent = self.get_node_by_path(self.get_path_parent(newpath))
 
+      assert isinstance(old_parent, directory.Directory)
+      assert isinstance(new_parent, directory.Directory)
+
       # Remove old, add new
       new_parent.add_child(old_node.message.name, self.get_path_filename(oldpath))
       old_parent.remove_child(old_node.message.name)
 
-  def utime(self, path, times):
+  def utime(self, path: str, times) -> Errno:
     node = self.get_node_by_path(path)
     if not node:
       return -fuse.ENOENT
@@ -320,9 +340,9 @@ class IMAPFS(fuse.Fuse):
     node.mtime = times[1]
     node.dirty = True
 
-  def unlink(self, path):
+  def unlink(self, path: str) -> Errno:
     node = self.get_node_by_path(path)
-    if not node or node.__class__ != file.File:
+    if not node or not isinstance(node, file.File):
       return -fuse.ENOENT
 
     parent = self.get_node_by_path(self.get_path_parent(path))
@@ -330,42 +350,43 @@ class IMAPFS(fuse.Fuse):
       return -fuse.ENOENT
 
     debug_print("Removing %s" % path)
+    assert isinstance(parent, directory.Directory)
 
     parent.remove_child(node.message.name)
     node.delete()
     self.open_nodes.pop(node.message.name)
 
-  def truncate(self, path, size):
+  def truncate(self, path: str, size: int) -> Errno:
     node = self.get_node_by_path(path)
     if not node:
       return -fuse.ENOENT
 
-    if node.__class__ != file.File:
+    if not isinstance(node, file.File):
       return -fuse.EISDIR
 
     debug_print("Resizing %s to %d" % (path, size))
 
     node.truncate(size)
 
-  def read(self, path, size, offset):
+  def read(self, path: str, size: int, offset: int) -> bytes | Errno:
     node = self.get_node_by_path(path)
     if not node:
       return -fuse.ENOENT
-    if node.__class__ != file.File:
+    if not isinstance(node, file.File):
       return -fuse.EISDIR
 
     node.seek(offset)
-    data = str(node.read(size))
+    data = bytes(node.read(size))
 
     debug_print("Read %d-%d returned %d bytes" % (offset, size + offset, len(data)))
 
     return data
 
-  def write(self, path, buf, offset):
+  def write(self, path: str, buf: bytes, offset: int) -> int:
     node = self.get_node_by_path(path)
     if not node:
       return -fuse.ENOENT
-    if node.__class__ != file.File:
+    if not isinstance(node, file.File):
       return -fuse.EISDIR
 
     byte_buf = bytearray(buf)
@@ -377,28 +398,30 @@ class IMAPFS(fuse.Fuse):
 
     return len(buf)
 
-  def release(self, path, flags):
+  def release(self, path: str, flags) -> Errno:
     node = self.get_node_by_path(path)
     if not node:
       return -fuse.ENOENT
 
     debug_print("Closing %s" % path)
+    assert isinstance(node, file.File)
 
     node.close_blocks()
 
     node.flush()
 
-  def releasedir(self, path):
+  def releasedir(self, path: str) -> Errno:
     node = self.get_node_by_path(path)
     if not node:
       return -fuse.ENOENT
 
     debug_print("Closing %s/" % path)
+    assert isinstance(node, directory.Directory)
 
     node.flush()
 
-  def chmod(self, path, mode):
+  def chmod(self, path: str, mode) -> Errno:
     return 0
 
-  def chown(self, path, user, group):
+  def chown(self, path: str, user, group) -> Errno:
     return 0

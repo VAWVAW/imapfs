@@ -16,6 +16,7 @@
 
 import os
 import time
+from typing import Self
 import uuid
 
 from imapfs import message
@@ -28,7 +29,7 @@ FS_BLOCK_SIZE = 262144
 class File:
   """Represents a file
   """
-  def __init__(self, msg, ctime, mtime, size, blocks):
+  def __init__(self, msg, ctime: float, mtime: float, size: int, blocks: dict[int, str]):
     self.message = msg
     self.ctime = ctime
     self.mtime = mtime
@@ -38,21 +39,20 @@ class File:
 
     self.pos = 0
 
-    self.open_messages = {}
+    self.open_messages: dict[int, message.Message] = {}
 
-  def create_block(self, block_id):
+  def create_block(self, block_id: int) -> message.Message:
     """Create a block
     """
     name = str(uuid.uuid4())
-    block = message.Message(self.message.conn, name, "")
+    block = message.Message(self.message.conn, name, b"")
     block.dirty = True
-    block.compress = True
     self.blocks[block_id] = block.name
     self.open_messages[block_id] = block
     self.dirty = True
     return block
 
-  def open_block(self, block_id):
+  def open_block(self, block_id: int) -> message.Message:
     """Open a block
     """
     if block_id in self.open_messages:
@@ -65,11 +65,11 @@ class File:
         return block
       else:
         block_key = self.blocks[block_id]
-        msg = message.Message.open(self.message.conn, block_key, compressed=True)
+        msg = message.Message.open(self.message.conn, block_key)
         self.open_messages[block_id] = msg
         return msg
 
-  def close_block(self, block_id):
+  def close_block(self, block_id: int) -> None:
     """Close a block
     """
     if block_id not in self.open_messages:
@@ -78,7 +78,7 @@ class File:
     self.open_messages[block_id].close()
     self.open_messages.pop(block_id)
 
-  def delete_block(self, block_id):
+  def delete_block(self, block_id: int) -> None:
     """Delete a block
     """
     if block_id not in self.blocks:
@@ -100,7 +100,7 @@ class File:
     self.size = size
 
     # Close and delete truncated blocks
-    end_block = self.size / FS_BLOCK_SIZE
+    end_block = self.size // FS_BLOCK_SIZE
     for block_id in self.blocks:
       if block_id > end_block:
         self.delete_block(block_id)
@@ -120,8 +120,8 @@ class File:
       new_pos = self.size - offset
 
     # Get block we are moving from and to
-    old_block_id = old_pos / FS_BLOCK_SIZE
-    new_block_id = new_pos / FS_BLOCK_SIZE
+    old_block_id = old_pos // FS_BLOCK_SIZE
+    new_block_id = new_pos // FS_BLOCK_SIZE
 
     # If we exit a block into a new one, we close the old block
     # to write changes and free memory
@@ -139,8 +139,8 @@ class File:
       size = self.size - self.pos
 
     # Get block the start point and end points are in
-    start_block_id = self.pos / FS_BLOCK_SIZE
-    end_block_id = (self.pos + size) / FS_BLOCK_SIZE + 1
+    start_block_id = self.pos // FS_BLOCK_SIZE
+    end_block_id = (self.pos + size) // FS_BLOCK_SIZE + 1
 
     buf = bytearray()
 
@@ -166,7 +166,7 @@ class File:
 
     return buf
 
-  def write(self, buf):
+  def write(self, buf: bytes):
     """Write data to the file
     """
     size = len(buf)
@@ -175,8 +175,8 @@ class File:
       self.truncate(self.pos + size)
 
     # Determine starting and ending blocks
-    start_block_id = self.pos / FS_BLOCK_SIZE
-    end_block_id = (self.pos + size) / FS_BLOCK_SIZE + 1
+    start_block_id = self.pos // FS_BLOCK_SIZE
+    end_block_id = (self.pos + size) // FS_BLOCK_SIZE + 1
 
     write_offset = 0
 
@@ -209,9 +209,9 @@ class File:
     if self.dirty:
       self.mtime = time.time()
       self.message.truncate(0)
-      self.message.write("f\r\n%d\t%d\t%d\r\n" % (self.ctime, self.mtime, self.size))
+      self.message.write(b"f\r\n%d\t%d\t%d\r\n" % (self.ctime, self.mtime, self.size))
       for block_id, block_key in self.blocks.items():
-        self.message.write("%d\t%s\r\n" % (block_id, block_key))
+        self.message.write(b"%d\t%s\r\n" % (block_id, block_key.encode()))
 
       self.message.flush()
       self.dirty = False
@@ -244,31 +244,31 @@ class File:
     # Unlink own block
     message.Message.unlink(self.message.conn, self.message.name)
 
-  @staticmethod
-  def create(conn):
+  @classmethod
+  def create(cls, conn) -> Self:
     """Create a file
     """
     msg = message.Message.create(conn)
-    f = File(msg, time.time(), time.time(), 0, {})
+    f = cls(msg, time.time(), time.time(), 0, {})
     f.dirty = True
     return f
 
-  @staticmethod
-  def from_message(msg):
+  @classmethod
+  def from_message(cls, msg: message.Message) -> Self:
     """Create a file object from a message
     """
-    data = str(msg.read())
+    data = bytes(msg.read())
 
-    lines = data.split("\r\n")
-    info = lines[1].split("\t")
+    lines = data.split(b"\r\n")
+    info = lines[1].split(b"\t")
 
     blocks = {}
 
     for line in lines[2:]:
       if not line:
         continue
-      line_info = line.split("\t")
-      blocks[int(line_info[0])] = line_info[1]
+      line_info = line.split(b"\t")
+      blocks[int(line_info[0])] = line_info[1].decode()
 
-    f = File(msg, int(info[0]), int(info[1]), int(info[2]), blocks)
+    f = cls(msg, int(info[0]), int(info[1]), int(info[2]), blocks)
     return f
