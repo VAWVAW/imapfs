@@ -50,7 +50,6 @@ class IMAPConnection:
       raise Exception()
     self.mailbox = mailbox
 
-
   def get_message(self, uid):
     """Get a message's text by its UID
     Returns None if not found
@@ -93,7 +92,6 @@ class IMAPConnection:
     if match:
       new_uid = match.group(1)
       self.uid_cache[subject] = new_uid
-
 
   def delete_message(self, uid):
     """Delete a message by UID

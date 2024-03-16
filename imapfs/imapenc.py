@@ -23,6 +23,7 @@ import bz2
 AES_KEY_SIZE = 32
 AES_BLOCK_SIZE = AES.block_size
 
+
 class IMAPEnc:
   """Class that handles crypto functions
   """

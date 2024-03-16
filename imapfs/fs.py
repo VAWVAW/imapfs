@@ -27,6 +27,7 @@ ROOT = str(uuid.UUID(bytes='\0' * 16))
 
 fuse.fuse_python_api = (0, 2)
 
+
 class IMAPFS(fuse.Fuse):
   """FUSE object for imapfs
   """
@@ -56,7 +57,7 @@ class IMAPFS(fuse.Fuse):
     check = self.check_filesystem()
     if check is None:
       self.init_filesystem()
-    elif check == False:
+    elif not check:
       raise Exception("Incorrect encryption key")
 
     # Run
@@ -81,7 +82,7 @@ class IMAPFS(fuse.Fuse):
       msg = message.Message.open(self.imap, name)
       if not msg:
         return None
-    except:
+    except Exception:
       return None
 
     # Determine file or dir
@@ -113,7 +114,7 @@ class IMAPFS(fuse.Fuse):
     """
     try:
       root = self.open_node(ROOT)
-    except:
+    except Exception:
       return False
 
     if root is None:

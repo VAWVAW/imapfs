@@ -24,6 +24,7 @@ from imapfs.debug_print import debug_print
 
 FS_BLOCK_SIZE = 262144
 
+
 class File:
   """Represents a file
   """
@@ -271,4 +272,3 @@ class File:
 
     f = File(msg, int(info[0]), int(info[1]), int(info[2]), blocks)
     return f
-
