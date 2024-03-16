@@ -19,13 +19,6 @@ fs.parser.add_option(mountopt="user", metavar="USERNAME", help="IMAP username to
 fs.parser.add_option(
   mountopt="password", metavar="PASSWORD", help="IMAP password to use"
 )
-fs.parser.add_option(mountopt="key", metavar="KEY", help="Encryption key")
-fs.parser.add_option(
-  mountopt="rounds",
-  metavar="ROUNDS",
-  default=10000,
-  help="Number of PBKDF2 iterations [default: %default]",
-)
 fs.parser.add_option(
   mountopt="mailbox",
   metavar="MAILBOX",

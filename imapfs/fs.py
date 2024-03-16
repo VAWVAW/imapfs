@@ -19,7 +19,7 @@ import uuid
 
 import fuse
 
-from imapfs import directory, file, imapconnection, imapenc, message
+from imapfs import directory, file, imapconnection, message
 from imapfs.debug_print import debug_print
 
 
@@ -48,8 +48,7 @@ class IMAPFS(fuse.Fuse):
     # Set up imap
     """Sets up IMAP connection and encryption
     """
-    enc = imapenc.IMAPEnc(self.key, int(self.rounds))
-    self.imap = imapconnection.IMAPConnection(self.host, int(self.port), enc)
+    self.imap = imapconnection.IMAPConnection(self.host, int(self.port))
     self.imap.login(self.user, self.password)
     self.imap.select(self.mailbox)
 

@@ -4,8 +4,7 @@ IMAPFS turns an inbox on your IMAP-enabled mail server into cloud storage. This
 program provides a FUSE filesystem that stores files as email messages on the
 remote server.
 
-Files are split into chunks, encrypted with AES-256, and base64 encoded before
-being stored.
+Files are split into chunks and base64 encoded before being stored.
 
 A few caveats exist:
 

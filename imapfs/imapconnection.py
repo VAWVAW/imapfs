@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from base64 import b64encode, b64decode
 import email.mime.text
 import imaplib
 import re
@@ -24,11 +25,10 @@ class IMAPConnection:
   """Class that manages a connection to an IMAP server
   """
 
-  def __init__(self, host, port, enc):
+  def __init__(self, host, port):
     """Connects to host:port
     """
     self.conn = imaplib.IMAP4_SSL(host, port)
-    self.enc = enc
     self.mailbox = "INBOX"
     self.uid_cache = {}
 
@@ -66,8 +66,7 @@ class IMAPConnection:
       return None
 
     data = params[1][0][1]
-    dec_data = self.enc.decrypt_message(data)
-    return dec_data
+    return b64decode(data)
 
   def put_message(self, subject, data):
     """Store a message
@@ -78,9 +77,7 @@ class IMAPConnection:
     if subject in self.uid_cache:
       self.uid_cache.pop(subject)
 
-    enc_data = self.enc.encrypt_message(data)
-
-    msg = email.mime.text.MIMEText(enc_data)
+    msg = email.mime.text.MIMEText(b64encode(data))
     msg['Subject'] = subject
 
     results = self.conn.append(self.mailbox, "(\\Seen \\Draft)", time.time(), msg.as_string())
