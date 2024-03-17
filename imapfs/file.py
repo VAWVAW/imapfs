@@ -14,13 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 import os
 import time
 from typing import Self
 import uuid
 
 from imapfs import message
-from imapfs.debug_print import debug_print
 
 
 FS_BLOCK_SIZE = 262144
@@ -58,7 +58,7 @@ class File:
     if block_id in self.open_messages:
       return self.open_messages[block_id]
     else:
-      debug_print("Opening block %d" % block_id)
+      logging.debug("Opening block %d", block_id)
       if block_id not in self.blocks:
         # Create first
         block = self.create_block(block_id)
@@ -74,7 +74,7 @@ class File:
     """
     if block_id not in self.open_messages:
       return
-    debug_print("Closing open block %d" % block_id)
+    logging.debug("Closing open block %d", block_id)
     self.open_messages[block_id].close()
     self.open_messages.pop(block_id)
 
@@ -221,7 +221,7 @@ class File:
     """
     # Close all blocks
     for block_id, block in self.open_messages.items():
-      debug_print("Closing open block %d" % block_id)
+      logging.debug("Closing open block %d", block_id)
       block.close()
     self.open_messages = {}
 

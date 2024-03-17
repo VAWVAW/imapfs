@@ -14,11 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 import os
 from typing import Self
 import uuid
 
-from imapfs.debug_print import debug_print
 from imapfs.imapconnection import IMAPConnection
 
 
@@ -89,7 +89,7 @@ class Message:
     """Write any changes to the server
     """
     if self.dirty:
-      debug_print("Flushing %d bytes" % len(self.data))
+      logging.debug("Flushing %d bytes", len(self.data))
 
       # Find old uid
       old_uid = self.conn.get_uid_by_subject(self.name)

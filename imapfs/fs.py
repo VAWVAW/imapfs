@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 import stat
 import traceback
 import uuid
@@ -22,7 +23,6 @@ from collections.abc import Generator
 import fuse
 
 from imapfs import directory, file, imapconnection, message
-from imapfs.debug_print import debug_print
 
 
 ROOT = str(uuid.UUID(int=0))
@@ -222,7 +222,7 @@ class IMAPFS(fuse.Fuse):
     if not isinstance(node, directory.Directory):
       return
 
-    debug_print("Listing %s/" % path)
+    logging.debug("Listing %s/", path)
 
     yield fuse.Direntry(".")
     yield fuse.Direntry("..")
@@ -240,7 +240,7 @@ class IMAPFS(fuse.Fuse):
     if parent.get_child_by_name(self.get_path_filename(path)):
       return -fuse.EEXIST
 
-    debug_print("Creating directory %s/" % path)
+    logging.debug("Creating directory %s/", path)
 
     child = directory.Directory.create(self.imap)
     self.open_nodes[child.message.name] = child
@@ -261,7 +261,7 @@ class IMAPFS(fuse.Fuse):
     if not parent:
       return -fuse.ENOENT
 
-    debug_print("Removing directory %s/" % path)
+    logging.debug("Removing directory %s/", path)
 
     assert isinstance(parent, directory.Directory)
 
@@ -279,7 +279,7 @@ class IMAPFS(fuse.Fuse):
     if parent.get_child_by_name(self.get_path_filename(path)):
       return -fuse.EEXIST
 
-    debug_print("Creating file %s" % path)
+    logging.debug("Creating file %s", path)
 
     node = file.File.create(self.imap)
     self.open_nodes[node.message.name] = node
@@ -290,7 +290,7 @@ class IMAPFS(fuse.Fuse):
     if not self.get_path_filename(newpath):
       newpath += self.get_path_filename(oldpath)
 
-    debug_print("Moving %s to %s" % (oldpath, newpath))
+    logging.debug("Moving %s to %s", oldpath, newpath)
 
     # handle same-parent
     if self.get_path_parent(oldpath) == self.get_path_parent(newpath):
@@ -349,7 +349,7 @@ class IMAPFS(fuse.Fuse):
     if not parent:
       return -fuse.ENOENT
 
-    debug_print("Removing %s" % path)
+    logging.debug("Removing %s", path)
     assert isinstance(parent, directory.Directory)
 
     parent.remove_child(node.message.name)
@@ -364,7 +364,7 @@ class IMAPFS(fuse.Fuse):
     if not isinstance(node, file.File):
       return -fuse.EISDIR
 
-    debug_print("Resizing %s to %d" % (path, size))
+    logging.debug("Resizing %s to %d", path, size)
 
     node.truncate(size)
 
@@ -378,7 +378,7 @@ class IMAPFS(fuse.Fuse):
     node.seek(offset)
     data = bytes(node.read(size))
 
-    debug_print("Read %d-%d returned %d bytes" % (offset, size + offset, len(data)))
+    logging.debug("Read %d-%d returned %d bytes", offset, size + offset, len(data))
 
     return data
 
@@ -394,7 +394,7 @@ class IMAPFS(fuse.Fuse):
     node.seek(offset)
     node.write(byte_buf)
 
-    debug_print("Write %d-%d" % (offset, offset + len(buf)))
+    logging.debug("Write %d-%d", offset, offset + len(buf))
 
     return len(buf)
 
@@ -403,7 +403,7 @@ class IMAPFS(fuse.Fuse):
     if not node:
       return -fuse.ENOENT
 
-    debug_print("Closing %s" % path)
+    logging.debug("Closing %s", path)
     assert isinstance(node, file.File)
 
     node.close_blocks()
@@ -415,7 +415,7 @@ class IMAPFS(fuse.Fuse):
     if not node:
       return -fuse.ENOENT
 
-    debug_print("Closing %s/" % path)
+    logging.debug("Closing %s/", path)
     assert isinstance(node, directory.Directory)
 
     node.flush()
