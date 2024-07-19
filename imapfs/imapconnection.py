@@ -65,7 +65,7 @@ class IMAPConnection:
           self.uid_cache.pop(subject)
       return None
 
-    data = params[1][0][1]
+    data = bytes(str(params[1][0]).split('"')[1], encoding="utf-8")
     return b64decode(data)
 
   def put_message(self, subject: str, data: bytes) -> None:
