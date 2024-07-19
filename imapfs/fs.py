@@ -196,6 +196,10 @@ class IMAPFS(fuse.Fuse):
     st.f_bsize = file.FS_BLOCK_SIZE
     st.f_frsize = file.FS_BLOCK_SIZE
 
+    # Add, so programs see free space
+    st.f_block = 2<<32
+    st.f_bavail = 2<<32
+
     return st
 
   def getattr(self, path: str) -> fuse.Stat | int:
