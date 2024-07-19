@@ -291,6 +291,7 @@ class IMAPFS(fuse.Fuse):
       newpath += self.get_path_filename(oldpath)
 
     logging.debug("Moving %s to %s", oldpath, newpath)
+    self.unlink(newpath)
 
     # handle same-parent
     if self.get_path_parent(oldpath) == self.get_path_parent(newpath):
@@ -300,7 +301,6 @@ class IMAPFS(fuse.Fuse):
 
       assert isinstance(parent, directory.Directory)
 
-      # For simplicity we do not allow overwriting
       new_child_key = parent.get_child_by_name(self.get_path_filename(newpath))
       if new_child_key:
         return -fuse.EEXIST
@@ -318,7 +318,6 @@ class IMAPFS(fuse.Fuse):
       if not old_parent:
         return -fuse.ENOENT
 
-      # For simplicity we do not allow overwriting
       new_node = self.get_node_by_path(newpath)
       if new_node:
         return -fuse.EEXIST
