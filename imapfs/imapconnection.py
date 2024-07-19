@@ -40,6 +40,7 @@ class IMAPConnection:
   def logout(self) -> None:
     """Log out of the server
     """
+    self.conn.expunge()
     self.conn.logout()
 
   def select(self, mailbox: str) -> None:
